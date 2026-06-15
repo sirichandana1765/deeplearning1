@@ -1,5 +1,6 @@
 import streamlit as st
-from transformers import pipeline
+import torch
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 st.set_page_config(
     page_title="AI Translator",
@@ -47,26 +48,42 @@ st.markdown(
 )
 
 st.markdown(
-    "<p class='sub-title'>English → Telugu & French Translation using Transformers</p>",
+    "<p class='sub-title'>English → Telugu & French Translation using NLLB</p>",
     unsafe_allow_html=True
 )
 
+MODEL_NAME = "facebook/nllb-200-distilled-600M"
+
 @st.cache_resource
-def load_models():
-    en_fr = pipeline(
-        "translation",
-        model="facebook/nllb-200-distilled-600M"
+def load_model():
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
+    return tokenizer, model
+
+tokenizer, model = load_model()
+
+def translate_text(text, target_lang):
+    tokenizer.src_lang = "eng_Latn"
+
+    inputs = tokenizer(
+        text,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512
     )
 
-    en_te = pipeline(
-        "translation",
-        model="facebook/nllb-200-distilled-600M"
+    generated_tokens = model.generate(
+        **inputs,
+        forced_bos_token_id=tokenizer.convert_tokens_to_ids(target_lang),
+        max_length=512
     )
 
-    return en_fr, en_te
+    translated_text = tokenizer.batch_decode(
+        generated_tokens,
+        skip_special_tokens=True
+    )[0]
 
-
-translator_fr, translator_te = load_models()
+    return translated_text
 
 st.markdown("<div class='box'>", unsafe_allow_html=True)
 
@@ -86,23 +103,20 @@ if st.button("Translate"):
 
         with st.spinner("Translating..."):
 
-            if language == "French":
-                result = translator_fr(
-                    text,
-                    src_lang="eng_Latn",
-                    tgt_lang="fra_Latn"
-                )
+            try:
+                if language == "French":
+                    target_lang = "fra_Latn"
+                else:
+                    target_lang = "tel_Telu"
 
-            else:
-                result = translator_te(
-                    text,
-                    src_lang="eng_Latn",
-                    tgt_lang="tel_Telu"
-                )
+                translated = translate_text(text, target_lang)
 
-            st.success("Translation Complete!")
-            st.subheader("Output")
-            st.write(result[0]["translation_text"])
+                st.success("Translation Complete!")
+                st.subheader("Output")
+                st.write(translated)
+
+            except Exception as e:
+                st.error(f"Translation failed: {e}")
 
     else:
         st.warning("Please enter text.")
@@ -110,4 +124,4 @@ if st.button("Translate"):
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("Powered by Transformers + Streamlit")
+st.caption("Powered by Hugging Face Transformers + Streamlit")
